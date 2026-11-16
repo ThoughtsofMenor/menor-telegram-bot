@@ -1,4 +1,7 @@
+import os
+import threading
 import logging
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
@@ -33,6 +36,18 @@ BOOKS = {
 }
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+# Render Web Service እንዳያቋርጠው የሚያገለግል ሰርቨር
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running alive!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
 
 # ገዢው /start ሲል የመጽሐፍት ምርጫ ማሳየት
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,7 +97,6 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.photo:
         photo_file_id = update.message.photo[-1].file_id
         
-        # ለአንተ (ADMIN) የሚላክ ቁልፍ
         keyboard = [[InlineKeyboardButton("✅ አረጋግጥና ሊንክ ላክ (Approve)", callback_data=f"approve_{user.id}_{book_key}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -113,13 +127,11 @@ async def handle_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
         book_title = BOOKS[book_key]["title"]
         drive_link = BOOKS[book_key]["link"]
         
-        # ለአንተ መረጋገጡን ማሳየት
         await query.edit_message_caption(
             caption=f"{query.message.caption}\n\n✅ **ተረጋግጧል! የ Google Drive ሊንኩ ለገዢው ተልኳል።**",
             parse_mode="Markdown"
         )
         
-        # ለገዢው የ Google Drive ሊንኩን መላክ
         try:
             await context.bot.send_message(
                 chat_id=user_id,
@@ -134,6 +146,9 @@ async def handle_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(f"❌ ሊንኩን መላክ አልተቻለም: {e}")
 
 if __name__ == '__main__':
+    # Dummy server ለ Render በጎን ማስኬድ
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    
     application = ApplicationBuilder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -141,5 +156,5 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(handle_approval, pattern="^approve_"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_receipt))
 
-    print("ቦቱ በሰላም እየሰራ ነው...")
+    print("ቦቱ 24/7 በሰላም እየሰራ ነው...")
     application.run_polling()
